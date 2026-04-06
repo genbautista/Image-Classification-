@@ -1,9 +1,7 @@
 [package]
 name = "image_classification"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
-cifar-ten = { version = "0.5", features = ["download"] }
-# Optional: add ndarray for numerical operations
 ndarray = "0.15"
