@@ -30,11 +30,11 @@ fn load_batch(path: &str) -> (Array2<f32>, Vec<u8>) {
 
 fn main() {
     let batch_paths = [
-        "cifar-10-batches-bin/data_batch_1.bin",
-        "cifar-10-batches-bin/data_batch_2.bin",
-        "cifar-10-batches-bin/data_batch_3.bin",
-        "cifar-10-batches-bin/data_batch_4.bin",
-        "cifar-10-batches-bin/data_batch_5.bin",
+        "data/data_batch_1.bin",
+        "data/data_batch_2.bin",
+        "data/data_batch_3.bin",
+        "data/data_batch_4.bin",
+        "data/data_batch_5.bin",
     ];
 
     let mut all_labels: Vec<u8> = Vec::new();
@@ -44,7 +44,7 @@ fn main() {
         all_labels.extend(labels);
     }
 
-    let (_, test_labels) = load_batch("cifar-10-batches-bin/test_batch.bin");
+    let (_, test_labels) = load_batch("data/test_batch.bin");
 
     println!("Training images: {}", all_labels.len());
     println!("Test images: {}", test_labels.len());
