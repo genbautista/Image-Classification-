@@ -7,8 +7,8 @@ use std::io::{BufReader, Read};
 
 const IMAGE_SIZE: usize = 3072;
 const BATCH_SIZE: usize = 10_000;
-const CLASSES: [u8; 5] = [0, 3, 4, 6, 8]; // airplane, cat, deer, frog, ship
-const CLASS_NAMES: [&str; 5] = ["airplane", "cat", "deer", "frog", "ship"];
+const CLASSES: [u8; 8] = [0, 3, 4, 5, 6, 7, 8, 9];
+const CLASS_NAMES: [&str; 8] = ["airplane", "cat", "deer", "dog", "frog", "horse", "ship", "truck"];
 const NUM_THREADS: usize = 8;
 
 fn load_batch(path: &str) -> (Array2<f32>, Vec<u8>) {
