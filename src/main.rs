@@ -1,12 +1,15 @@
+mod benchmark;
+mod correlation;
+
 use ndarray::Array2;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
 const IMAGE_SIZE: usize = 3072;
 const BATCH_SIZE: usize = 10_000;
-
 const CLASSES: [u8; 5] = [0, 3, 4, 6, 8]; // airplane, cat, deer, frog, ship
 const CLASS_NAMES: [&str; 5] = ["airplane", "cat", "deer", "frog", "ship"];
+const NUM_THREADS: usize = 8;
 
 fn load_batch(path: &str) -> (Array2<f32>, Vec<u8>) {
     let file = File::open(path).expect("Could not open file");
@@ -45,8 +48,8 @@ fn filter_classes(images: Array2<f32>, labels: Vec<u8>) -> (Array2<f32>, Vec<u8>
         .collect();
 
     let filtered_labels: Vec<u8> = indices.iter().map(|&i| labels[i]).collect();
-
     let n = indices.len();
+
     (
         Array2::from_shape_vec((n, IMAGE_SIZE), filtered_images).unwrap(),
         filtered_labels,
@@ -62,6 +65,7 @@ fn main() {
         "data/data_batch_5.bin",
     ];
 
+    // --- Load and filter training data ---
     let mut all_images: Vec<f32> = Vec::new();
     let mut all_labels: Vec<u8> = Vec::new();
 
@@ -75,10 +79,64 @@ fn main() {
     let n_train = all_labels.len();
     let train_images = Array2::from_shape_vec((n_train, IMAGE_SIZE), all_images).unwrap();
 
-    let (test_images, test_labels_raw) = load_batch("data/test_batch.bin");
-    let (test_images, _test_labels) = filter_classes(test_images, test_labels_raw);
+    // --- Load and filter test data ---
+    let (test_images_raw, test_labels_raw) = load_batch("data/test_batch.bin");
+    let (test_images, test_labels) = filter_classes(test_images_raw, test_labels_raw);
+    let num_test = test_images.nrows();
 
     println!("Classes: {:?}", CLASS_NAMES);
     println!("Training images: {}", train_images.nrows());
-    println!("Test images: {}", test_images.nrows());
+    println!("Test images: {}", num_test);
+
+    // --- Build templates (serial, one-time setup) ---
+    let templates = correlation::build_templates(&train_images, &all_labels, &CLASSES);
+
+    // --- Save template images ---
+    println!("\nSaving template images...");
+    correlation::save_templates(&templates, &CLASS_NAMES);
+
+    println!("\nRunning benchmarks on {} test images...\n", num_test);
+
+    // --- Run all 4 methods ---
+    let results = vec![
+        benchmark::run(
+            "Serial",
+            1,
+            || correlation::classify_serial(&test_images, &templates),
+            &test_labels,
+            &CLASSES,
+        ),
+        benchmark::run(
+            "Rayon (parallel iter)",
+            NUM_THREADS,
+            || correlation::classify_rayon(&test_images, &templates),
+            &test_labels,
+            &CLASSES,
+        ),
+        benchmark::run(
+            "std::thread + Arc (8 threads)",
+            NUM_THREADS,
+            || benchmark::classify_threaded(&test_images, &templates, NUM_THREADS),
+            &test_labels,
+            &CLASSES,
+        ),
+        benchmark::run(
+            "std::thread + Arc<RwLock<>> (8t)",
+            NUM_THREADS,
+            || benchmark::classify_threaded_rwlock(&test_images, &templates, NUM_THREADS),
+            &test_labels,
+            &CLASSES,
+        ),
+    ];
+
+    // --- Print benchmark results table ---
+    benchmark::print_results(&results, num_test);
+
+    // --- Print confusion matrix using serial predictions ---
+    benchmark::print_confusion_matrix(
+        &results[0].predictions,
+        &test_labels,
+        &CLASSES,
+        &CLASS_NAMES,
+    );
 }
