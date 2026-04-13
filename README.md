@@ -1,4 +1,4 @@
-# Template Matching & Cross Correaltion on the CIFAR-10 dataset
+# Template Matching & Cross Correlation on the CIFAR-10 dataset
 
 ### Genesis Bautista & Jessica McIlree
 
