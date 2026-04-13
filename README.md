@@ -5,7 +5,7 @@
 ## Description
 - This project aims to classify on 8 of the 10 presented image classes in the CIFAR-10 dataset, demonstrating how template matching via Normalized Cross-Correlation (NCC) can be parallelized using Rust's concurrency features.
 
-  Each test image is compared against 8 class templates across four different classification methods:
+  Each test image is compared against 8 class templates across four different parallelization methods:
     - Sequential classification - Images are compared to each class template one at a time on a single thread, serving as the baseline for benchmarking.
     - Rayon -  Work is distributed across threads using Rayon's parallel iterators, which automatically split images into chunks based on available CPU cores.
     - std::thread + Arc - Templates are wrapped in an Arc so all threads share a single copy of the data. Threads are spawned manually, one per chunk, and run independently before their results are joined.
