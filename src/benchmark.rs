@@ -11,15 +11,17 @@ pub struct BenchResult {
     pub duration: Duration,
     pub accuracy: f32,
     pub predictions: Vec<usize>,
-    pub num_threads: usize, // 1 for serial/rayon-managed, N for manual thread methods
+    pub num_threads: usize,
 }
 
 /// Compute classification accuracy.
-pub fn accuracy(predictions: &[usize], labels: &[u8], classes: &[u8]) -> f32 {
+/// pred indices are 0..(num_classes * templates_per_class), so divide by templates_per_class
+/// to get the class index before looking up in classes[].
+pub fn accuracy(predictions: &[usize], labels: &[u8], classes: &[u8], templates_per_class: usize) -> f32 {
     let correct = predictions
         .iter()
         .zip(labels.iter())
-        .filter(|(&pred, &true_label)| classes[pred] == true_label)
+        .filter(|(&pred, &true_label)| classes[pred / templates_per_class] == true_label)
         .count();
     correct as f32 / labels.len() as f32
 }
@@ -100,6 +102,7 @@ pub fn run<F>(
     f: F,
     true_labels: &[u8],
     classes: &[u8],
+    templates_per_class: usize,
 ) -> BenchResult
 where
     F: FnOnce() -> Vec<usize>,
@@ -107,7 +110,7 @@ where
     let start = Instant::now();
     let predictions = f();
     let duration = start.elapsed();
-    let acc = accuracy(&predictions, true_labels, classes);
+    let acc = accuracy(&predictions, true_labels, classes, templates_per_class);
     BenchResult {
         label: label.to_string(),
         duration,
@@ -159,13 +162,15 @@ pub fn print_confusion_matrix(
     true_labels: &[u8],
     classes: &[u8],
     class_names: &[&str],
+    templates_per_class: usize,
 ) {
     let n = classes.len();
     let mut matrix = vec![vec![0usize; n]; n];
 
     for (&pred, &true_label) in predictions.iter().zip(true_labels.iter()) {
+        let pred_class = pred / templates_per_class;
         if let Some(true_idx) = classes.iter().position(|&c| c == true_label) {
-            matrix[true_idx][pred] += 1;
+            matrix[true_idx][pred_class] += 1;
         }
     }
 
@@ -177,7 +182,7 @@ pub fn print_confusion_matrix(
         print!("{:>10}", name);
     }
     println!();
-    println!("{:-<62}", "");
+    println!("{:-<92}", "");
 
     for (i, row) in matrix.iter().enumerate() {
         print!("{:<12}", class_names[i]);
@@ -206,4 +211,22 @@ pub fn print_confusion_matrix(
         };
         println!("  {:<12}: {:.1}%", class_names[j], precision);
     }
+
+    println!();
+    println!("Per-class recall (true X, how often predicted correctly):");
+    for i in 0..n {
+        let row_total: usize = matrix[i].iter().sum();
+        let correct = matrix[i][i];
+        let recall = if row_total > 0 {
+            correct as f32 / row_total as f32 * 100.0
+        } else {
+            0.0
+        };
+        println!("  {:<12}: {:.1}%", class_names[i], recall);
+    }
+
+    let total_correct: usize = (0..n).map(|i| matrix[i][i]).sum();
+    let total_all: usize = matrix.iter().map(|row| row.iter().sum::<usize>()).sum();
+    println!();
+    println!("Overall accuracy: {:.2}%", total_correct as f32 / total_all as f32 * 100.0);
 }

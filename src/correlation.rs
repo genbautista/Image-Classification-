@@ -21,13 +21,20 @@ pub fn ncc(a: &Array1<f32>, b: &Array1<f32>) -> f32 {
     dot / (norm_a * norm_b)
 }
 
-/// Build one zero-mean normalized mean template per class.
-/// Returns Array2 of shape (num_classes, IMAGE_SIZE).
-pub fn build_templates(images: &Array2<f32>, labels: &[u8], classes: &[u8]) -> Array2<f32> {
-    println!("Building class templates from training data...");
+/// Build `templates_per_class` zero-mean normalized mean templates per class.
+/// Each class's training images are split into equal chunks; each chunk is averaged
+/// into one template. Returns Array2 of shape (num_classes * templates_per_class, IMAGE_SIZE).
+pub fn build_templates(
+    images: &Array2<f32>,
+    labels: &[u8],
+    classes: &[u8],
+    templates_per_class: usize,
+) -> Array2<f32> {
+    println!("Building {} templates per class from training data...", templates_per_class);
 
     let image_size = images.ncols();
-    let mut templates = Array2::<f32>::zeros((classes.len(), image_size));
+    let total_templates = classes.len() * templates_per_class;
+    let mut templates = Array2::<f32>::zeros((total_templates, image_size));
 
     for (class_idx, &class) in classes.iter().enumerate() {
         let class_indices: Vec<usize> = labels
@@ -37,28 +44,45 @@ pub fn build_templates(images: &Array2<f32>, labels: &[u8], classes: &[u8]) -> A
             .map(|(i, _)| i)
             .collect();
 
-        let n = class_indices.len() as f32;
+        let n = class_indices.len();
+        let chunk_size = (n + templates_per_class - 1) / templates_per_class;
 
-        // Accumulate mean
-        for &i in &class_indices {
-            let row = images.row(i);
-            for (j, &val) in row.iter().enumerate() {
-                templates[[class_idx, j]] += val / n;
+        for chunk_idx in 0..templates_per_class {
+            let start = chunk_idx * chunk_size;
+            let end = (start + chunk_size).min(n);
+            let chunk = &class_indices[start..end];
+            let chunk_n = chunk.len() as f32;
+
+            let template_row = class_idx * templates_per_class + chunk_idx;
+
+            // Average the chunk
+            for &i in chunk {
+                let row = images.row(i);
+                for (j, &val) in row.iter().enumerate() {
+                    templates[[template_row, j]] += val / chunk_n;
+                }
             }
-        }
 
-        // Zero-mean normalize the template itself
-        let mean = templates.row(class_idx).mean().unwrap_or(0.0);
-        for j in 0..image_size {
-            templates[[class_idx, j]] -= mean;
+            // Zero-mean normalize
+            let mean = templates.row(template_row).mean().unwrap_or(0.0);
+            for j in 0..image_size {
+                templates[[template_row, j]] -= mean;
+            }
         }
     }
 
-    println!("Templates built: {} classes.", classes.len());
+    println!(
+        "Templates built: {} classes x {} = {} total templates.",
+        classes.len(),
+        templates_per_class,
+        total_templates
+    );
     templates
 }
 
-/// Predict the class index for a single image using zero-mean NCC.
+/// Predict the template index for a single image using zero-mean NCC.
+/// Returns the template index (0..total_templates); divide by templates_per_class
+/// to get the class index.
 pub fn predict(image: &Array1<f32>, templates: &Array2<f32>) -> usize {
     let normalized = normalize(image);
     templates
@@ -91,7 +115,7 @@ pub fn classify_rayon(test_images: &Array2<f32>, templates: &Array2<f32>) -> Vec
 }
 
 /// Save template images as upscaled PNGs (requires `image` crate).
-pub fn save_templates(templates: &Array2<f32>, class_names: &[&str]) {
+pub fn save_templates(templates: &Array2<f32>, class_names: &[&str], templates_per_class: usize) {
     use image::{imageops, ImageBuffer, Rgb};
 
     std::fs::create_dir_all("templates").expect("Could not create templates dir");
@@ -115,7 +139,8 @@ pub fn save_templates(templates: &Array2<f32>, class_names: &[&str]) {
 
         // Upscale to 256x256 for visibility
         let big = imageops::resize(&img, 256, 256, imageops::FilterType::Nearest);
-        let path = format!("templates/{}.png", class_names[i]);
+        let class_name = class_names[i / templates_per_class];
+        let path = format!("templates/{}_{}.png", class_name, i % templates_per_class);
         big.save(&path).expect("Failed to save template image");
         println!("  Saved: {}", path);
     }

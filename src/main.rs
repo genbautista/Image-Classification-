@@ -10,6 +10,7 @@ const BATCH_SIZE: usize = 10_000;
 const CLASSES: [u8; 8] = [0, 3, 4, 5, 6, 7, 8, 9];
 const CLASS_NAMES: [&str; 8] = ["airplane", "cat", "deer", "dog", "frog", "horse", "ship", "truck"];
 const NUM_THREADS: usize = 8;
+const TEMPLATES_PER_CLASS: usize = 10;
 
 fn load_batch(path: &str) -> (Array2<f32>, Vec<u8>) {
     let file = File::open(path).expect("Could not open file");
@@ -89,11 +90,16 @@ fn main() {
     println!("Test images: {}", num_test);
 
     // --- Build templates (serial, one-time setup) ---
-    let templates = correlation::build_templates(&train_images, &all_labels, &CLASSES);
+    let templates = correlation::build_templates(
+        &train_images,
+        &all_labels,
+        &CLASSES,
+        TEMPLATES_PER_CLASS,
+    );
 
     // --- Save template images ---
     println!("\nSaving template images...");
-    correlation::save_templates(&templates, &CLASS_NAMES);
+    correlation::save_templates(&templates, &CLASS_NAMES, TEMPLATES_PER_CLASS);
 
     println!("\nRunning benchmarks on {} test images...\n", num_test);
 
@@ -105,6 +111,7 @@ fn main() {
             || correlation::classify_serial(&test_images, &templates),
             &test_labels,
             &CLASSES,
+            TEMPLATES_PER_CLASS,
         ),
         benchmark::run(
             "Rayon (parallel iter)",
@@ -112,6 +119,7 @@ fn main() {
             || correlation::classify_rayon(&test_images, &templates),
             &test_labels,
             &CLASSES,
+            TEMPLATES_PER_CLASS,
         ),
         benchmark::run(
             "std::thread + Arc (8 threads)",
@@ -119,6 +127,7 @@ fn main() {
             || benchmark::classify_threaded(&test_images, &templates, NUM_THREADS),
             &test_labels,
             &CLASSES,
+            TEMPLATES_PER_CLASS,
         ),
         benchmark::run(
             "std::thread + Arc<RwLock<>> (8t)",
@@ -126,6 +135,7 @@ fn main() {
             || benchmark::classify_threaded_rwlock(&test_images, &templates, NUM_THREADS),
             &test_labels,
             &CLASSES,
+            TEMPLATES_PER_CLASS,
         ),
     ];
 
@@ -138,5 +148,6 @@ fn main() {
         &test_labels,
         &CLASSES,
         &CLASS_NAMES,
+        TEMPLATES_PER_CLASS,
     );
 }
